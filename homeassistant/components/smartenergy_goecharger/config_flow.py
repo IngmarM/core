@@ -9,10 +9,9 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_API_TOKEN, CONF_HOST, CONF_NAME, CONF_SCAN_INTERVAL
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.typing import HomeAssistantType
 
 from .const import DOMAIN
 
@@ -63,7 +62,7 @@ def _validate_host(host: str) -> None:
     raise ValueError("invalid_host")
 
 
-async def _ping_host(hass: HomeAssistantType, host: str, token: str) -> None:
+async def _ping_host(hass: HomeAssistant, host: str, token: str) -> None:
     """Do a simple status request to check if the authentication works properly."""
     api: GoeChargerApi = GoeChargerApi(host, token, wait=True)
 
@@ -73,7 +72,7 @@ async def _ping_host(hass: HomeAssistantType, host: str, token: str) -> None:
         raise InvalidAuth from exc
 
 
-async def _validate_user_input(hass: HomeAssistantType, user_input: dict) -> dict:
+async def _validate_user_input(hass: HomeAssistant, user_input: dict) -> dict:
     """Execute all types of validations. In case there is an error, set it to the error object."""
     errors: dict = {}
 

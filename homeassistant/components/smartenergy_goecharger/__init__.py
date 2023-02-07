@@ -123,7 +123,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     - coordinator
     - sensors
     """
-    options = config_entry.options
     data = dict(config_entry.data)
     entry_id = config_entry.entry_id
 
@@ -133,10 +132,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     )
 
     # scan interval is provided as an integer, but has to be an interval
-    scan_interval: timedelta = timedelta(seconds=options[CONF_SCAN_INTERVAL])
-    name: str = options[CONF_NAME]
-    url: str = options[CONF_HOST]
-    token: str = options[CONF_API_TOKEN]
+    scan_interval: timedelta = timedelta(seconds=data[CONF_SCAN_INTERVAL])
+    name: str = data[CONF_NAME]
+    url: str = data[CONF_HOST]
+    token: str = data[CONF_API_TOKEN]
 
     _LOGGER.debug("Configuring API for the charger=%s", entry_id)
     hass.data[DOMAIN][INIT_STATE][CHARGERS_API][entry_id] = init_state(name, url, token)

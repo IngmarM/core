@@ -3,13 +3,13 @@
 import aiohttp
 from goechargerv2.goecharger import GoeChargerApi
 
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.typing import HomeAssistantType
 
 from .const import API, CHARGERS_API, DOMAIN, INIT_STATE
 
 
-async def fetch_status(hass: HomeAssistantType, charger_name: str) -> dict:
+async def fetch_status(hass: HomeAssistant, charger_name: str) -> dict:
     """Fetch go-e Charger Cloud car status via API."""
 
     api: GoeChargerApi = hass.data[DOMAIN][INIT_STATE][CHARGERS_API][charger_name][API]
@@ -18,7 +18,7 @@ async def fetch_status(hass: HomeAssistantType, charger_name: str) -> dict:
     return fetched_status
 
 
-async def ping_charger(hass: HomeAssistantType, charger_name: str) -> None:
+async def ping_charger(hass: HomeAssistant, charger_name: str) -> None:
     """Make a call to the charger device. If it fails raise an error."""
 
     try:

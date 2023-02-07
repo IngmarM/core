@@ -6,13 +6,13 @@ import pytest
 
 from homeassistant import config_entries
 from homeassistant.components.smartenergy_goecharger.const import DOMAIN
+from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
-from homeassistant.helpers.typing import HomeAssistantType
 
 from tests.common import MockConfigEntry
 
 
-async def _initialize_and_assert_flow(hass: HomeAssistantType) -> FlowResult:
+async def _initialize_and_assert_flow(hass: HomeAssistant) -> FlowResult:
     result_init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -22,9 +22,7 @@ async def _initialize_and_assert_flow(hass: HomeAssistantType) -> FlowResult:
     return result_init
 
 
-async def _initialize_and_assert_options(
-    hass: HomeAssistantType, data: dict
-) -> FlowResult:
+async def _initialize_and_assert_options(hass: HomeAssistant, data: dict) -> FlowResult:
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="added_charger",
@@ -83,7 +81,7 @@ async def _assert_invalid_auth(flow_id: str, data: dict, configure_fn) -> None:
     assert result_configure["errors"] == {"base": "invalid_auth"}
 
 
-async def test_config_flow_init(hass: HomeAssistantType, charger_1) -> None:
+async def test_config_flow_init(hass: HomeAssistant, charger_1) -> None:
     """Test we can configure the integration via config flow."""
     result_init = await _initialize_and_assert_flow(hass)
 
@@ -107,7 +105,7 @@ async def test_config_flow_init(hass: HomeAssistantType, charger_1) -> None:
 
 
 async def test_config_flow_invalid_host(
-    hass: HomeAssistantType, charger_host_prefix, charger_host_suffix
+    hass: HomeAssistant, charger_host_prefix, charger_host_suffix
 ) -> None:
     """Test an error is created when host is invalid."""
     result_init = await _initialize_and_assert_flow(hass)
@@ -126,7 +124,7 @@ async def test_config_flow_invalid_host(
 
 
 async def test_config_flow_invalid_scan_interval(
-    hass: HomeAssistantType, charger_interval_min, charger_interval_max
+    hass: HomeAssistant, charger_interval_min, charger_interval_max
 ) -> None:
     """Test an error is created when scan interval is invalid."""
     result_init = await _initialize_and_assert_flow(hass)
@@ -147,7 +145,7 @@ async def test_config_flow_invalid_scan_interval(
 
 
 async def test_config_flow_invalid_auth(
-    hass: HomeAssistantType, charger_auth_failed
+    hass: HomeAssistant, charger_auth_failed
 ) -> None:
     """Test an error is created when host and token failed to authenticate."""
     result_init = await _initialize_and_assert_flow(hass)
@@ -178,7 +176,7 @@ async def test_options_flow_init(hass, charger_2, charger_3) -> None:
 
 
 async def test_options_flow_invalid_host(
-    hass: HomeAssistantType, charger_2, charger_host_prefix, charger_host_suffix
+    hass: HomeAssistant, charger_2, charger_host_prefix, charger_host_suffix
 ) -> None:
     """Test an error is created when host is invalid."""
     result_init = await _initialize_and_assert_options(hass, charger_2)
@@ -197,7 +195,7 @@ async def test_options_flow_invalid_host(
 
 
 async def test_options_flow_invalid_scan_interval(
-    hass: HomeAssistantType, charger_2, charger_interval_min, charger_interval_max
+    hass: HomeAssistant, charger_2, charger_interval_min, charger_interval_max
 ) -> None:
     """Test an error is created when scan interval is invalid."""
     result_init = await _initialize_and_assert_options(hass, charger_2)
@@ -218,7 +216,7 @@ async def test_options_flow_invalid_scan_interval(
 
 
 async def test_options_flow_invalid_auth(
-    hass: HomeAssistantType, charger_2, charger_auth_failed
+    hass: HomeAssistant, charger_2, charger_auth_failed
 ) -> None:
     """Test an error is created when host and token failed to authenticate."""
     result_init = await _initialize_and_assert_options(hass, charger_2)
