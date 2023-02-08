@@ -92,11 +92,6 @@ def _setup_apis(hass: HomeAssistant, config: ConfigType) -> dict:
 
     if DOMAIN in config:
         hass.data[DOMAIN] = {}
-        scan_interval: timedelta = config[DOMAIN].get(
-            CONF_SCAN_INTERVAL, DEFAULT_UPDATE_INTERVAL
-        )
-        _LOGGER.debug("Scan interval set to=%s", scan_interval)
-
         chargers: list[list[dict]] = config[DOMAIN].get(CONF_CHARGERS, [])
 
         for charger in chargers:
