@@ -11,23 +11,39 @@ import time
 from typing import TYPE_CHECKING
 
 import async_timeout
-from voip_utils import CallInfo, RtpDatagramProtocol, SdpInfo, VoipDatagramProtocol
+from voip_utils import (
+    CallInfo,
+    RtcpState,
+    RtpDatagramProtocol,
+    SdpInfo,
+    VoipDatagramProtocol,
+)
 
 from homeassistant.components import stt, tts
 from homeassistant.components.assist_pipeline import (
     Pipeline,
     PipelineEvent,
     PipelineEventType,
+    PipelineNotFound,
     async_get_pipeline,
     async_pipeline_from_audio_stream,
     select as pipeline_select,
 )
-from homeassistant.components.assist_pipeline.vad import VoiceCommandSegmenter
+from homeassistant.components.assist_pipeline.vad import (
+    VadSensitivity,
+    VoiceCommandSegmenter,
+)
 from homeassistant.const import __version__
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.util.ulid import ulid
 
-from .const import CHANNELS, DOMAIN, RATE, RTP_AUDIO_SETTINGS, WIDTH
+from .const import (
+    CHANNELS,
+    DOMAIN,
+    RATE,
+    RTP_AUDIO_SETTINGS,
+    WIDTH,
+)
 
 if TYPE_CHECKING:
     from .devices import VoIPDevice, VoIPDevices
@@ -36,7 +52,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def make_protocol(
-    hass: HomeAssistant, devices: VoIPDevices, call_info: CallInfo
+    hass: HomeAssistant,
+    devices: VoIPDevices,
+    call_info: CallInfo,
+    rtcp_state: RtcpState | None = None,
 ) -> VoipDatagramProtocol:
     """Plays a pre-recorded message if pipeline is misconfigured."""
     voip_device = devices.async_get_or_create(call_info)
@@ -45,14 +64,29 @@ def make_protocol(
         DOMAIN,
         voip_device.voip_id,
     )
-    pipeline = async_get_pipeline(hass, pipeline_id)
+    try:
+        pipeline: Pipeline | None = async_get_pipeline(hass, pipeline_id)
+    except PipelineNotFound:
+        pipeline = None
+
     if (
         (pipeline is None)
         or (pipeline.stt_engine is None)
         or (pipeline.tts_engine is None)
     ):
         # Play pre-recorded message instead of failing
-        return PreRecordMessageProtocol(hass, "problem.pcm")
+        return PreRecordMessageProtocol(
+            hass,
+            "problem.pcm",
+            opus_payload_type=call_info.opus_payload_type,
+            rtcp_state=rtcp_state,
+        )
+
+    vad_sensitivity = pipeline_select.get_vad_sensitivity(
+        hass,
+        DOMAIN,
+        voip_device.voip_id,
+    )
 
     # Pipeline is properly configured
     return PipelineRtpDatagramProtocol(
@@ -60,6 +94,9 @@ def make_protocol(
         hass.config.language,
         voip_device,
         Context(user_id=devices.config_entry.data["user"]),
+        opus_payload_type=call_info.opus_payload_type,
+        silence_seconds=VadSensitivity.to_seconds(vad_sensitivity),
+        rtcp_state=rtcp_state,
     )
 
 
@@ -75,11 +112,14 @@ class HassVoipDatagramProtocol(VoipDatagramProtocol):
                 session_name="voip_hass",
                 version=__version__,
             ),
-            valid_protocol_factory=lambda call_info: make_protocol(
-                hass, devices, call_info
+            valid_protocol_factory=lambda call_info, rtcp_state: make_protocol(
+                hass, devices, call_info, rtcp_state
             ),
-            invalid_protocol_factory=lambda call_info: PreRecordMessageProtocol(
-                hass, "not_configured.pcm"
+            invalid_protocol_factory=lambda call_info, rtcp_state: PreRecordMessageProtocol(
+                hass,
+                "not_configured.pcm",
+                opus_payload_type=call_info.opus_payload_type,
+                rtcp_state=rtcp_state,
             ),
         )
         self.hass = hass
@@ -109,6 +149,7 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
         language: str,
         voip_device: VoIPDevice,
         context: Context,
+        opus_payload_type: int,
         pipeline_timeout: float = 30.0,
         audio_timeout: float = 2.0,
         buffered_chunks_before_speech: int = 100,
@@ -117,9 +158,17 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
         error_tone_enabled: bool = True,
         tone_delay: float = 0.2,
         tts_extra_timeout: float = 1.0,
+        silence_seconds: float = 1.0,
+        rtcp_state: RtcpState | None = None,
     ) -> None:
         """Set up pipeline RTP server."""
-        super().__init__(rate=RATE, width=WIDTH, channels=CHANNELS)
+        super().__init__(
+            rate=RATE,
+            width=WIDTH,
+            channels=CHANNELS,
+            opus_payload_type=opus_payload_type,
+            rtcp_state=rtcp_state,
+        )
 
         self.hass = hass
         self.language = language
@@ -133,6 +182,7 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
         self.error_tone_enabled = error_tone_enabled
         self.tone_delay = tone_delay
         self.tts_extra_timeout = tts_extra_timeout
+        self.silence_seconds = silence_seconds
 
         self._audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
         self._context = context
@@ -181,7 +231,7 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
 
         try:
             # Wait for speech before starting pipeline
-            segmenter = VoiceCommandSegmenter()
+            segmenter = VoiceCommandSegmenter(silence_seconds=self.silence_seconds)
             chunk_buffer: deque[bytes] = deque(
                 maxlen=self.buffered_chunks_before_speech,
             )
@@ -233,6 +283,7 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
                         self.hass, DOMAIN, self.voip_device.voip_id
                     ),
                     conversation_id=self._conversation_id,
+                    device_id=self.voip_device.device_id,
                     tts_audio_output="raw",
                 )
 
@@ -248,6 +299,8 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
                 await self._tts_done.wait()
 
             _LOGGER.debug("Pipeline finished")
+        except PipelineNotFound:
+            _LOGGER.warning("Pipeline not found")
         except asyncio.TimeoutError:
             # Expected after caller hangs up
             _LOGGER.debug("Pipeline timeout")
@@ -272,12 +325,12 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
             chunk = await self._audio_queue.get()
 
         while chunk:
+            chunk_buffer.append(chunk)
+
             segmenter.process(chunk)
             if segmenter.in_command:
+                # Buffer until command starts
                 return True
-
-            # Buffer until command starts
-            chunk_buffer.append(chunk)
 
             async with async_timeout.timeout(self.audio_timeout):
                 chunk = await self._audio_queue.get()
@@ -350,15 +403,19 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
 
             async with async_timeout.timeout(tts_seconds + self.tts_extra_timeout):
                 # Assume TTS audio is 16Khz 16-bit mono
-                await self.hass.async_add_executor_job(
-                    partial(self.send_audio, audio_bytes, **RTP_AUDIO_SETTINGS)
-                )
+                await self._async_send_audio(audio_bytes)
         except asyncio.TimeoutError as err:
             _LOGGER.warning("TTS timeout")
             raise err
         finally:
             # Signal pipeline to restart
             self._tts_done.set()
+
+    async def _async_send_audio(self, audio_bytes: bytes, **kwargs):
+        """Send audio in executor."""
+        await self.hass.async_add_executor_job(
+            partial(self.send_audio, audio_bytes, **RTP_AUDIO_SETTINGS, **kwargs)
+        )
 
     async def _play_listening_tone(self) -> None:
         """Play a tone to indicate that Home Assistant is listening."""
@@ -369,13 +426,9 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
                 "tone.pcm",
             )
 
-        await self.hass.async_add_executor_job(
-            partial(
-                self.send_audio,
-                self._tone_bytes,
-                silence_before=self.tone_delay,
-                **RTP_AUDIO_SETTINGS,
-            )
+        await self._async_send_audio(
+            self._tone_bytes,
+            silence_before=self.tone_delay,
         )
 
     async def _play_processing_tone(self) -> None:
@@ -387,13 +440,7 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
                 "processing.pcm",
             )
 
-        await self.hass.async_add_executor_job(
-            partial(
-                self.send_audio,
-                self._processing_bytes,
-                **RTP_AUDIO_SETTINGS,
-            )
-        )
+        await self._async_send_audio(self._processing_bytes)
 
     async def _play_error_tone(self) -> None:
         """Play a tone to indicate a pipeline error occurred."""
@@ -404,13 +451,7 @@ class PipelineRtpDatagramProtocol(RtpDatagramProtocol):
                 "error.pcm",
             )
 
-        await self.hass.async_add_executor_job(
-            partial(
-                self.send_audio,
-                self._error_bytes,
-                **RTP_AUDIO_SETTINGS,
-            )
-        )
+        await self._async_send_audio(self._error_bytes)
 
     def _load_pcm(self, file_name: str) -> bytes:
         """Load raw audio (16Khz, 16-bit mono)."""
@@ -424,11 +465,19 @@ class PreRecordMessageProtocol(RtpDatagramProtocol):
         self,
         hass: HomeAssistant,
         file_name: str,
+        opus_payload_type: int,
         message_delay: float = 1.0,
         loop_delay: float = 2.0,
+        rtcp_state: RtcpState | None = None,
     ) -> None:
         """Set up RTP server."""
-        super().__init__(rate=RATE, width=WIDTH, channels=CHANNELS)
+        super().__init__(
+            rate=RATE,
+            width=WIDTH,
+            channels=CHANNELS,
+            opus_payload_type=opus_payload_type,
+            rtcp_state=rtcp_state,
+        )
         self.hass = hass
         self.file_name = file_name
         self.message_delay = message_delay

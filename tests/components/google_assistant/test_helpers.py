@@ -17,7 +17,7 @@ from homeassistant.components.google_assistant.const import (
 from homeassistant.config import async_process_ha_core_config
 from homeassistant.core import HomeAssistant, State
 from homeassistant.setup import async_setup_component
-from homeassistant.util import dt
+from homeassistant.util import dt as dt_util
 
 from . import MockConfig
 
@@ -49,13 +49,13 @@ async def test_google_entity_sync_serialize_with_local_sdk(hass: HomeAssistant) 
     )
     entity = helpers.GoogleEntity(hass, config, hass.states.get("light.ceiling_lights"))
 
-    serialized = await entity.sync_serialize(None, "mock-uuid")
+    serialized = entity.sync_serialize(None, "mock-uuid")
     assert "otherDeviceIds" not in serialized
     assert "customData" not in serialized
 
     config.async_enable_local_sdk()
 
-    serialized = await entity.sync_serialize("mock-user-id", "abcdef")
+    serialized = entity.sync_serialize("mock-user-id", "abcdef")
     assert serialized["otherDeviceIds"] == [{"deviceId": "light.ceiling_lights"}]
     assert serialized["customData"] == {
         "httpPort": 1234,
@@ -68,7 +68,7 @@ async def test_google_entity_sync_serialize_with_local_sdk(hass: HomeAssistant) 
             "homeassistant.components.google_assistant.helpers.get_google_type",
             return_value=device_type,
         ):
-            serialized = await entity.sync_serialize(None, "mock-uuid")
+            serialized = entity.sync_serialize(None, "mock-uuid")
             assert "otherDeviceIds" not in serialized
             assert "customData" not in serialized
 
@@ -128,7 +128,7 @@ async def test_config_local_sdk(
     assert config.is_local_connected is True
     with patch(
         "homeassistant.components.google_assistant.helpers.utcnow",
-        return_value=dt.utcnow() + timedelta(seconds=90),
+        return_value=dt_util.utcnow() + timedelta(seconds=90),
     ):
         assert config.is_local_connected is False
 
@@ -255,7 +255,7 @@ async def test_agent_user_id_storage(
     }
 
     async def _check_after_delay(data):
-        async_fire_time_changed(hass, dt.utcnow() + timedelta(seconds=2))
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=2))
         await hass.async_block_till_done()
 
         assert (
