@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "input_source": "Input source to trigger charging",
+          "output_source": "Output source to define what to charge",
+          "smart_energy_mode": "Simple mode (charge 4 hours till 7 AM), precise mode (custom charge time)"
+        },
+        "description": "Configure what should trigger the charging, what should be charged and which charging mode to use."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "input_source": "Input source to trigger charging",
+          "output_source": "Output source to define what to charge",
+          "smart_energy_mode": "Simple mode (charge 4 hours till 7 AM), precise mode (custom charge time)"
+        },
+        "description": "Configure what should trigger the charging, what should be charged and which charging mode to use."
+      }
+    }
+  }
+}

@@ -399,6 +399,7 @@ FLOWS = {
         "sma",
         "smappee",
         "smart_meter_texas",
+        "smartenergy",
         "smartthings",
         "smarttub",
         "smhi",
